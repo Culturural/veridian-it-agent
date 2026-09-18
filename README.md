@@ -54,3 +54,5 @@ The supplied assignment material is the source of truth. Unsupported information
 ## Architecture Principle
 
 The LLM handles natural language understanding and response generation. Deterministic Python logic handles policy enforcement, approval requirements, escalation conditions, and business rules.
+
+Video Link - https://drive.google.com/file/d/1OegtpQSldKiSuD4L1x5-DnWfguM1kDXs/view?usp=sharing
