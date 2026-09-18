@@ -1,5 +1,5 @@
 """
-Policy retriever using ChromaDB and OpenAI embeddings.
+Policy retriever using ChromaDB and local sentence-transformers embeddings.
 
 Performs semantic search over the policy corpus and returns
 PolicyEvidence objects.
@@ -16,14 +16,13 @@ from typing import List, Optional
 
 import chromadb
 from chromadb.utils import embedding_functions
-from openai import OpenAI
 
 from app.database.models import Policy
 from app.agent.schemas import PolicyEvidence
 
 
 # Configuration
-DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # Lightweight sentence-transformers model
 CHROMA_PERSIST_DIR = "data/chroma"
 COLLECTION_NAME = "veridian_policies"
 
@@ -47,7 +46,7 @@ class PolicyRetriever:
         Args:
             persist_directory: Path to ChromaDB persistent storage
             collection_name: Name of the policy collection
-            embedding_model: OpenAI embedding model (defaults to env or constant)
+            embedding_model: Sentence-transformers model (defaults to all-MiniLM-L6-v2)
         """
         self.persist_directory = persist_directory
         self.collection_name = collection_name
@@ -55,19 +54,14 @@ class PolicyRetriever:
         # Get embedding model from env or use default
         self.embedding_model = (
             embedding_model or
-            os.getenv("OPENAI_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
+            os.getenv("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
         )
         
         # Initialize ChromaDB client
         self.client = chromadb.PersistentClient(path=persist_directory)
         
-        # Initialize OpenAI embedding function
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        if not openai_api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is required")
-        
-        self.embedding_function = embedding_functions.OpenAIEmbeddingFunction(
-            api_key=openai_api_key,
+        # Initialize sentence-transformers embedding function (free, local)
+        self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
             model_name=self.embedding_model
         )
         
@@ -135,7 +129,7 @@ class PolicyRetriever:
         """
         Convert ChromaDB distance to relevance score.
         
-        ChromaDB returns L2 (Euclidean) distance by default for OpenAI embeddings.
+        ChromaDB returns L2 (Euclidean) distance by default.
         Lower distance = more similar.
         
         We convert to a relevance score where:

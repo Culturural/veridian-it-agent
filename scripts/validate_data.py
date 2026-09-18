@@ -189,45 +189,45 @@ def main():
     success, policies, error = load_json_file(data_dir / "policies.json")
     if not success:
         all_errors.append(error)
-        print(f"   ✗ {error}")
+        print(f"   [ERROR] {error}")
     else:
         policy_errors = validate_policies(policies)
         if policy_errors:
             all_errors.extend(policy_errors)
             for err in policy_errors:
-                print(f"   ✗ {err}")
+                print(f"   [ERROR] {err}")
         else:
-            print(f"   ✓ Valid: {len(policies)} policies")
+            print(f"   [OK] Valid: {len(policies)} policies")
     
     # Validate requests
     print("\n2. Validating requests.json...")
     success, requests, error = load_json_file(data_dir / "requests.json")
     if not success:
         all_errors.append(error)
-        print(f"   ✗ {error}")
+        print(f"   [ERROR] {error}")
     else:
         request_errors = validate_requests(requests)
         if request_errors:
             all_errors.extend(request_errors)
             for err in request_errors:
-                print(f"   ✗ {err}")
+                print(f"   [ERROR] {err}")
         else:
-            print(f"   ✓ Valid: {len(requests)} requests")
+            print(f"   [OK] Valid: {len(requests)} requests")
     
     # Validate tickets
     print("\n3. Validating tickets.json...")
     success, tickets, error = load_json_file(data_dir / "tickets.json")
     if not success:
         all_errors.append(error)
-        print(f"   ✗ {error}")
+        print(f"   [ERROR] {error}")
     else:
         ticket_errors = validate_tickets(tickets)
         if ticket_errors:
             all_errors.extend(ticket_errors)
             for err in ticket_errors:
-                print(f"   ✗ {err}")
+                print(f"   [ERROR] {err}")
         else:
-            print(f"   ✓ Valid: {len(tickets)} tickets")
+            print(f"   [OK] Valid: {len(tickets)} tickets")
     
     # Summary
     print("\n" + "=" * 60)

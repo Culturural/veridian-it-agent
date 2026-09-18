@@ -313,10 +313,10 @@ def test_laptop_2_years(kb03_policy, asset01_policy):
 
 
 def test_laptop_age_missing(kb03_policy, asset01_policy):
-    """Test laptop replacement with missing age info."""
+    """Test laptop replacement with missing age info (no hardware failure reported)."""
     facts = ExtractedFacts(
         intent="laptop_replacement",
-        entities={"issue": "laptop won't turn on"},
+        entities={"issue": "requesting replacement"},
         missing_information=["laptop_age_years"],
     )
     

@@ -19,6 +19,7 @@ This module does NOT:
 
 import json
 import os
+import time
 from typing import Optional
 
 from google import genai
@@ -28,7 +29,7 @@ from app.agent.schemas import ExtractedFacts
 
 
 # Default model configuration
-DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
 
 # Extraction prompt
 EXTRACTION_PROMPT = """You are the request-understanding component of an internal IT service agent.
@@ -47,7 +48,12 @@ CRITICAL RULES:
 - Preserve important numerical values, requested items, symptoms, and conditions
 - Missing information should contain only information genuinely required to understand the request
 - Do NOT ask questions inside the entities field
-- Return only the structured schema
+- Return JSON strictly following this schema:
+  {
+    "intent": "<intent_name>",
+    "entities": {"<key>": "<value>"},
+    "missing_information": ["<missing item 1>", ...]
+  }
 
 INTENT GUIDELINES:
 - Use concise intent names that describe what the user wants (e.g., "vpn_access", "laptop_issue", "home_office_equipment")
@@ -102,37 +108,34 @@ def understand_request(
     # Get model name
     model_name = model or os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
     
-    try:
-        # Initialize Gemini client
-        client = genai.Client(api_key=api_key)
-        
-        # Create prompt
-        prompt = f"{EXTRACTION_PROMPT}\n\n{text}"
-        
-        # Call Gemini with structured output
-        response = client.models.generate_content(
-            model=model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=ExtractedFacts,
+    client = genai.Client(api_key=api_key)
+    prompt = f"{EXTRACTION_PROMPT}\n\n{text}"
+    
+    max_retries = 3
+    last_err = None
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                )
             )
-        )
-        
-        # Parse response
-        if not response or not response.text:
-            raise RuntimeError("Gemini returned empty response")
-        
-        # Parse JSON and validate with Pydantic
-        data = json.loads(response.text)
-        facts = ExtractedFacts(**data)
-        
-        return facts
-        
-    except (ValueError, json.JSONDecodeError) as e:
-        # Re-raise validation and JSON decode errors with context
-        if isinstance(e, json.JSONDecodeError):
-            raise RuntimeError(f"Failed to parse Gemini response as JSON: {e}")
-        raise
-    except Exception as e:
-        raise RuntimeError(f"Gemini API call failed: {e}")
+            
+            if not response or not response.text:
+                raise RuntimeError("Gemini returned empty response")
+            
+            data = json.loads(response.text)
+            facts = ExtractedFacts(**data)
+            return facts
+        except (ValueError, json.JSONDecodeError) as e:
+            if isinstance(e, json.JSONDecodeError):
+                raise RuntimeError(f"Failed to parse Gemini response as JSON: {e}")
+            raise
+        except Exception as e:
+            last_err = e
+            if attempt < max_retries - 1:
+                time.sleep(1.5 * (attempt + 1))
+            else:
+                raise RuntimeError(f"Gemini API call failed: {last_err}") from last_err

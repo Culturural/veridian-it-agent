@@ -1,3 +1,1 @@
-"""
-User interface components.
-"""
+"""UI package for Veridian IT Service Agent."""

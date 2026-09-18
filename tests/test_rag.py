@@ -108,36 +108,34 @@ def test_policy_content_preserved():
 
 def test_empty_query_rejected():
     """Test that empty query is rejected."""
-    with patch('chromadb.PersistentClient'):
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            retriever = PolicyRetriever()
-            
-            with pytest.raises(ValueError, match="Query must be non-empty"):
-                retriever.retrieve_policies("")
-            
-            with pytest.raises(ValueError, match="Query must be non-empty"):
-                retriever.retrieve_policies("   ")
+    with patch('chromadb.PersistentClient'), patch('chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction'):
+        retriever = PolicyRetriever()
+        
+        with pytest.raises(ValueError, match="Query must be non-empty"):
+            retriever.retrieve_policies("")
+        
+        with pytest.raises(ValueError, match="Query must be non-empty"):
+            retriever.retrieve_policies("   ")
 
 
 def test_invalid_top_k_rejected():
     """Test that invalid top_k is rejected."""
-    with patch('chromadb.PersistentClient'):
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            retriever = PolicyRetriever()
-            
-            with pytest.raises(ValueError, match="top_k must be positive"):
-                retriever.retrieve_policies("test query", top_k=0)
-            
-            with pytest.raises(ValueError, match="top_k must be positive"):
-                retriever.retrieve_policies("test query", top_k=-1)
+    with patch('chromadb.PersistentClient'), patch('chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction'):
+        retriever = PolicyRetriever()
+        
+        with pytest.raises(ValueError, match="top_k must be positive"):
+            retriever.retrieve_policies("test query", top_k=0)
+        
+        with pytest.raises(ValueError, match="top_k must be positive"):
+            retriever.retrieve_policies("test query", top_k=-1)
 
 
-def test_missing_api_key():
-    """Test that retriever fails without API key."""
-    with patch('chromadb.PersistentClient'):
+def test_no_openai_api_key_required():
+    """Test that retriever works without any OpenAI API key in environment."""
+    with patch('chromadb.PersistentClient'), patch('chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction'):
         with patch.dict('os.environ', {}, clear=True):
-            with pytest.raises(ValueError, match="OPENAI_API_KEY"):
-                PolicyRetriever()
+            retriever = PolicyRetriever()
+            assert retriever.embedding_model == "all-MiniLM-L6-v2"
 
 
 # ============================================================================
@@ -146,83 +144,80 @@ def test_missing_api_key():
 
 def test_retrieval_converts_to_policy_evidence():
     """Test that retrieval results are converted to PolicyEvidence."""
-    with patch('chromadb.PersistentClient') as mock_client:
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            # Mock collection
-            mock_collection = MagicMock()
-            mock_collection.count.return_value = 3
-            mock_collection.query.return_value = {
-                'ids': [['KB-01', 'KB-02']],
-                'documents': [['Content 1', 'Content 2']],
-                'metadatas': [[
-                    {'policy_id': 'KB-01', 'title': 'Title 1', 'category': 'cat1', 'source_type': 'kb'},
-                    {'policy_id': 'KB-02', 'title': 'Title 2', 'category': 'cat2', 'source_type': 'kb'}
-                ]],
-                'distances': [[0.1, 0.3]]
-            }
-            
-            mock_client.return_value.get_or_create_collection.return_value = mock_collection
-            
-            retriever = PolicyRetriever()
-            results = retriever.retrieve_policies("test query", top_k=2)
-            
-            assert len(results) == 2
-            assert all(isinstance(r, PolicyEvidence) for r in results)
-            assert results[0].policy_id == 'KB-01'
-            assert results[0].title == 'Title 1'
-            assert results[0].content == 'Content 1'
+    with patch('chromadb.PersistentClient') as mock_client, patch('chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction'):
+        # Mock collection
+        mock_collection = MagicMock()
+        mock_collection.count.return_value = 3
+        mock_collection.query.return_value = {
+            'ids': [['KB-01', 'KB-02']],
+            'documents': [['Content 1', 'Content 2']],
+            'metadatas': [[
+                {'policy_id': 'KB-01', 'title': 'Title 1', 'category': 'cat1', 'source_type': 'kb'},
+                {'policy_id': 'KB-02', 'title': 'Title 2', 'category': 'cat2', 'source_type': 'kb'}
+            ]],
+            'distances': [[0.1, 0.3]]
+        }
+        
+        mock_client.return_value.get_or_create_collection.return_value = mock_collection
+        
+        retriever = PolicyRetriever()
+        results = retriever.retrieve_policies("test query", top_k=2)
+        
+        assert len(results) == 2
+        assert all(isinstance(r, PolicyEvidence) for r in results)
+        assert results[0].policy_id == 'KB-01'
+        assert results[0].title == 'Title 1'
+        assert results[0].content == 'Content 1'
 
 
 def test_relevance_scores_within_bounds():
     """Test that relevance scores remain within 0-1."""
-    with patch('chromadb.PersistentClient') as mock_client:
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            # Mock collection with various distances
-            mock_collection = MagicMock()
-            mock_collection.count.return_value = 3
-            mock_collection.query.return_value = {
-                'ids': [['KB-01', 'KB-02', 'KB-03']],
-                'documents': [['Content 1', 'Content 2', 'Content 3']],
-                'metadatas': [[
-                    {'policy_id': 'KB-01', 'title': 'T1', 'category': 'c1', 'source_type': 'kb'},
-                    {'policy_id': 'KB-02', 'title': 'T2', 'category': 'c2', 'source_type': 'kb'},
-                    {'policy_id': 'KB-03', 'title': 'T3', 'category': 'c3', 'source_type': 'kb'}
-                ]],
-                'distances': [[0.0, 0.5, 2.0]]  # Various distances
-            }
-            
-            mock_client.return_value.get_or_create_collection.return_value = mock_collection
-            
-            retriever = PolicyRetriever()
-            results = retriever.retrieve_policies("test query", top_k=3)
-            
-            for result in results:
-                assert result.relevance is not None
-                assert 0.0 <= result.relevance <= 1.0
+    with patch('chromadb.PersistentClient') as mock_client, patch('chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction'):
+        # Mock collection with various distances
+        mock_collection = MagicMock()
+        mock_collection.count.return_value = 3
+        mock_collection.query.return_value = {
+            'ids': [['KB-01', 'KB-02', 'KB-03']],
+            'documents': [['Content 1', 'Content 2', 'Content 3']],
+            'metadatas': [[
+                {'policy_id': 'KB-01', 'title': 'T1', 'category': 'c1', 'source_type': 'kb'},
+                {'policy_id': 'KB-02', 'title': 'T2', 'category': 'c2', 'source_type': 'kb'},
+                {'policy_id': 'KB-03', 'title': 'T3', 'category': 'c3', 'source_type': 'kb'}
+            ]],
+            'distances': [[0.0, 0.5, 2.0]]  # Various distances
+        }
+        
+        mock_client.return_value.get_or_create_collection.return_value = mock_collection
+        
+        retriever = PolicyRetriever()
+        results = retriever.retrieve_policies("test query", top_k=3)
+        
+        for result in results:
+            assert result.relevance is not None
+            assert 0.0 <= result.relevance <= 1.0
 
 
 def test_distance_to_relevance_conversion():
     """Test distance to relevance conversion logic."""
-    with patch('chromadb.PersistentClient'):
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            retriever = PolicyRetriever()
-            
-            # Distance 0 should give relevance close to 1.0
-            rel_0 = retriever._distance_to_relevance(0.0)
-            assert rel_0 == pytest.approx(1.0, abs=0.01)
-            
-            # Distance increases, relevance decreases
-            rel_1 = retriever._distance_to_relevance(1.0)
-            rel_2 = retriever._distance_to_relevance(2.0)
-            assert rel_1 > rel_2
-            
-            # All values within bounds
-            assert 0.0 <= rel_0 <= 1.0
-            assert 0.0 <= rel_1 <= 1.0
-            assert 0.0 <= rel_2 <= 1.0
-            
-            # None distance returns None
-            assert retriever._distance_to_relevance(None) is None
+    with patch('chromadb.PersistentClient'), patch('chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction'):
+        retriever = PolicyRetriever()
+        
+        # Distance 0 should give relevance close to 1.0
+        rel_0 = retriever._distance_to_relevance(0.0)
+        assert rel_0 == pytest.approx(1.0, abs=0.01)
+        
+        # Distance increases, relevance decreases
+        rel_1 = retriever._distance_to_relevance(1.0)
+        rel_2 = retriever._distance_to_relevance(2.0)
+        assert rel_1 > rel_2
+        
+        # All values within bounds
+        assert 0.0 <= rel_0 <= 1.0
+        assert 0.0 <= rel_1 <= 1.0
+        assert 0.0 <= rel_2 <= 1.0
+        
+        # None distance returns None
+        assert retriever._distance_to_relevance(None) is None
 
 
 # ============================================================================
@@ -252,70 +247,67 @@ def test_stable_policy_ids_preserved():
 
 def test_duplicate_ingestion_safe():
     """Test that duplicate ingestion is safe/idempotent."""
-    with patch('chromadb.PersistentClient') as mock_client:
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            mock_collection = MagicMock()
-            mock_collection.count.return_value = 11
-            mock_client.return_value.get_or_create_collection.return_value = mock_collection
-            
-            retriever = PolicyRetriever()
-            
-            # Create test policies
-            test_policies = [
-                Policy(
-                    id="TEST-01",
-                    title="Test Policy",
-                    category="test",
-                    content="Test content",
-                    source_type="knowledge_base"
-                )
-            ]
-            
-            # Ingest twice
-            count1 = retriever.ingest_policies(test_policies)
-            count2 = retriever.ingest_policies(test_policies)
-            
-            # Both should succeed
-            assert count1 == 1
-            assert count2 == 1
-            
-            # Upsert should be called (not insert)
-            assert mock_collection.upsert.call_count == 2
+    with patch('chromadb.PersistentClient') as mock_client, patch('chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction'):
+        mock_collection = MagicMock()
+        mock_collection.count.return_value = 11
+        mock_client.return_value.get_or_create_collection.return_value = mock_collection
+        
+        retriever = PolicyRetriever()
+        
+        # Create test policies
+        test_policies = [
+            Policy(
+                id="TEST-01",
+                title="Test Policy",
+                category="test",
+                content="Test content",
+                source_type="knowledge_base"
+            )
+        ]
+        
+        # Ingest twice
+        count1 = retriever.ingest_policies(test_policies)
+        count2 = retriever.ingest_policies(test_policies)
+        
+        # Both should succeed
+        assert count1 == 1
+        assert count2 == 1
+        
+        # Upsert should be called (not insert)
+        assert mock_collection.upsert.call_count == 2
 
 
 def test_ingest_preserves_metadata():
     """Test that ingestion preserves all metadata."""
-    with patch('chromadb.PersistentClient') as mock_client:
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            mock_collection = MagicMock()
-            mock_client.return_value.get_or_create_collection.return_value = mock_collection
-            
-            retriever = PolicyRetriever()
-            
-            test_policy = Policy(
-                id="KB-02",
-                title="VPN Access",
-                category="vpn",
-                content="VPN access is granted...",
-                source_type="knowledge_base"
-            )
-            
-            retriever.ingest_policies([test_policy])
-            
-            # Check upsert was called with correct data
-            call_args = mock_collection.upsert.call_args
-            assert call_args[1]['ids'] == ['KB-02']
-            assert call_args[1]['documents'] == ['VPN access is granted...']
-            assert call_args[1]['metadatas'][0]['policy_id'] == 'KB-02'
-            assert call_args[1]['metadatas'][0]['title'] == 'VPN Access'
-            assert call_args[1]['metadatas'][0]['category'] == 'vpn'
-            assert call_args[1]['metadatas'][0]['source_type'] == 'knowledge_base'
+    with patch('chromadb.PersistentClient') as mock_client, patch('chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction'):
+        mock_collection = MagicMock()
+        mock_client.return_value.get_or_create_collection.return_value = mock_collection
+        
+        retriever = PolicyRetriever()
+        
+        test_policy = Policy(
+            id="KB-02",
+            title="VPN Access",
+            category="vpn",
+            content="VPN access is granted...",
+            source_type="knowledge_base"
+        )
+        
+        retriever.ingest_policies([test_policy])
+        
+        # Check upsert was called with correct data
+        call_args = mock_collection.upsert.call_args
+        assert call_args[1]['ids'] == ['KB-02']
+        assert call_args[1]['documents'] == ['VPN access is granted...']
+        assert call_args[1]['metadatas'][0]['policy_id'] == 'KB-02'
+        assert call_args[1]['metadatas'][0]['title'] == 'VPN Access'
+        assert call_args[1]['metadatas'][0]['category'] == 'vpn'
+        assert call_args[1]['metadatas'][0]['source_type'] == 'knowledge_base'
 
 
 def test_empty_ingestion():
     """Test that ingesting empty list is handled gracefully."""
-    with patch('chromadb.PersistentClient'):
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            retriever = PolicyRetriever()
-            count = retriever.ingest_policies([])
-            assert count == 0
+    with patch('chromadb.PersistentClient'), patch('chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction'):
+        retriever = PolicyRetriever()
+        count = retriever.ingest_policies([])
+        assert count == 0

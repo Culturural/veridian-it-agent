@@ -71,6 +71,7 @@ def evaluate_decision(
     # Try each policy rule to see which one applies
     # Rules return None if they don't apply to this intent or lack required policy evidence
     rule_functions = [
+        security_rule,
         password_reset_rule,
         vpn_rule,
         laptop_rule,
@@ -79,7 +80,6 @@ def evaluate_decision(
         mailbox_rule,
         guest_wifi_rule,
         expense_rule,
-        security_rule,
         wfh_rule,
     ]
     
@@ -142,8 +142,14 @@ def _handle_unsupported_request(
     has_missing_info = len(facts.missing_information) > 0
     intent_is_vague = "unclear" in facts.intent.lower() or "vague" in facts.intent.lower() or "unknown" in facts.intent.lower()
     
-    # Check if we have ANY policy evidence that might help
-    if policies:
+    if intent_is_vague or has_missing_info:
+        # Request is unclear or has missing info → FOLLOW_UP to clarify
+        reasoning = (
+            f"Request intent '{facts.intent}' is unclear or incomplete. "
+            f"Need to gather more information to determine applicable policy."
+        )
+        outcome = "FOLLOW_UP"
+    elif policies:
         # We retrieved policies but no rule matched
         # This suggests the request is related but not directly covered
         reasoning = (
@@ -152,14 +158,6 @@ def _handle_unsupported_request(
             f"rule applies. Human review required."
         )
         outcome = "ESCALATE"
-    elif intent_is_vague or has_missing_info:
-        # No policies retrieved AND request is unclear or has missing info
-        # → FOLLOW_UP to clarify
-        reasoning = (
-            f"Request intent '{facts.intent}' is unclear or incomplete. "
-            f"Need to gather more information to determine applicable policy."
-        )
-        outcome = "FOLLOW_UP"
     else:
         # No policies retrieved AND request seems clear
         # → likely unsupported → ESCALATE

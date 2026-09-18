@@ -173,29 +173,29 @@ def laptop_rule(
     if "laptop" not in intent and "hardware" not in intent:
         return None
     
-    laptop_age_years = facts.entities.get("laptop_age_years") or facts.entities.get("age_years")
-    issue = str(facts.entities.get("issue", "")).lower()
+    laptop_age_years = facts.entities.get("laptop_age_years") or facts.entities.get("age_years") or facts.entities.get("age") or facts.entities.get("device_age")
+    if laptop_age_years is not None:
+        try:
+            import re
+            m = re.search(r'\d+(\.\d+)?', str(laptop_age_years))
+            if m:
+                laptop_age_years = float(m.group(0))
+        except Exception:
+            pass
+
+    # Check all entity and intent values to catch symptoms, conditions, issues, problems
+    entity_text = " ".join(str(v) for v in facts.entities.values()).lower() + " " + facts.intent.lower()
     verified_failure = facts.entities.get("verified_failure", False)
     
     # Check if this is a replacement request (not just troubleshooting)
-    is_replacement = any(word in issue for word in ["dead", "won't turn on", "not working", "replacement", "new laptop"])
+    is_replacement = any(word in entity_text for word in ["dead", "won't turn on", "not working", "replacement", "new laptop", "fail", "broken"])
     
     if not is_replacement:
         # Just troubleshooting, not a replacement request
         return None
     
-    # Missing laptop age → FOLLOW_UP
-    if laptop_age_years is None:
-        sources = ["KB-03", "ASSET-01"] if asset01 else ["KB-03"]
-        return (
-            "FOLLOW_UP",
-            "Need laptop age to determine replacement eligibility per KB-03 and ASSET-01." if asset01 else "Need laptop age to determine replacement eligibility per KB-03.",
-            ["Verify how long the laptop has been in service"],
-            sources
-        )
-    
     # Hardware failure mentioned
-    if ("dead" in issue or "won't turn on" in issue or "not working" in issue or "fail" in issue):
+    if any(word in entity_text for word in ["dead", "won't turn on", "not working", "fail", "broken"]):
         if not verified_failure:
             # Reported but not verified → FOLLOW_UP
             return (
@@ -226,7 +226,16 @@ def laptop_rule(
                 )
     
     # Age-based replacement logic (no verified failure)
-    if laptop_age_years < 3:
+    if laptop_age_years is None:
+        # Age unknown and no verified failure → FOLLOW_UP for age
+        sources = ["KB-03", "ASSET-01"] if asset01 else ["KB-03"]
+        return (
+            "FOLLOW_UP",
+            "Need to know laptop age to determine eligibility per KB-03 and ASSET-01.",
+            ["Provide the laptop's age in years"],
+            sources
+        )
+    elif laptop_age_years < 3:
         # <3 years → not eligible under KB-03
         sources = ["KB-03", "ASSET-01"] if asset01 else ["KB-03"]
         return (
@@ -395,8 +404,14 @@ def mailbox_rule(
     
     intent = facts.intent.lower()
     
-    if "mailbox" not in intent and "email" not in intent and "quota" not in intent:
+    # Exclude security incidents (phishing, malware, unauthorized access)
+    if "phishing" in intent or "security" in intent or "malware" in intent or "suspicious" in intent:
         return None
+    
+    if "mailbox" not in intent and "quota" not in intent:
+        issue = str(facts.entities.get("issue", "")).lower()
+        if not any(k in issue for k in ["quota", "storage", "full", "space", "limit", "gb", "archive", "capacity"]):
+            return None
     
     issue = str(facts.entities.get("issue", "")).lower()
     requested_quota_gb = facts.entities.get("requested_quota_gb")

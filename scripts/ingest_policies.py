@@ -25,33 +25,29 @@ def main():
     print("Veridian IT Service Agent - Policy Ingestion")
     print("=" * 60)
     
-    # Check for API key
-    if not os.getenv("OPENAI_API_KEY"):
-        print("\nError: OPENAI_API_KEY environment variable not set")
-        print("Please set your OpenAI API key in .env file")
-        sys.exit(1)
-    
     try:
         # Load policies
         print("\n1. Loading policies from data/policies.json...")
         policies = load_policies()
-        print(f"   ✓ Loaded {len(policies)} policies")
+        print(f"   [OK] Loaded {len(policies)} policies")
         
         # Initialize retriever
-        print("\n2. Initializing ChromaDB...")
+        print("\n2. Initializing ChromaDB with local embeddings...")
+        print("   (First run will download sentence-transformers model)")
         retriever = PolicyRetriever()
-        print(f"   ✓ Collection: {retriever.collection_name}")
-        print(f"   ✓ Location: {retriever.persist_directory}")
+        print(f"   [OK] Collection: {retriever.collection_name}")
+        print(f"   [OK] Location: {retriever.persist_directory}")
+        print(f"   [OK] Embedding model: {retriever.embedding_model}")
         
         # Ingest policies
         print("\n3. Ingesting policies...")
         count = retriever.ingest_policies(policies)
-        print(f"   ✓ Ingested {count} policies")
+        print(f"   [OK] Ingested {count} policies")
         
         # Verify
         print("\n4. Verifying...")
         stored_count = retriever.get_collection_count()
-        print(f"   ✓ Collection now contains {stored_count} policies")
+        print(f"   [OK] Collection now contains {stored_count} policies")
         
         # Summary
         print("\n" + "=" * 60)
@@ -61,16 +57,17 @@ def main():
         print(f"Policies stored: {stored_count}")
         print(f"Collection: {retriever.collection_name}")
         print(f"Location: {retriever.persist_directory}/")
+        print(f"Embedding: {retriever.embedding_model} (local, no API key needed)")
         print("=" * 60)
         
     except FileNotFoundError as e:
-        print(f"\n✗ Error: {e}")
+        print(f"\n[ERROR] File error: {e}")
         sys.exit(1)
     except ValueError as e:
-        print(f"\n✗ Error: {e}")
+        print(f"\n[ERROR] Value error: {e}")
         sys.exit(1)
     except Exception as e:
-        print(f"\n✗ Unexpected error: {e}")
+        print(f"\n[ERROR] Unexpected error: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

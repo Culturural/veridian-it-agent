@@ -1,8 +1,8 @@
 streamlit
-openai
 pydantic
 chromadb
 python-dotenv
 pytest
 pytest-mock
 google-genai
+sentence-transformers
