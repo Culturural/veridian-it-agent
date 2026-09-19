@@ -49,7 +49,7 @@ The supplied assignment material is the source of truth. Unsupported information
 2. Activate: `.venv\Scripts\activate` (Windows) or `source .venv/bin/activate` (Unix)
 3. Install dependencies: `pip install -r requirements.txt`
 4. Copy `.env.example` to `.env` and add your OpenAI API key
-5. Run: `streamlit run app/main.py`
+5. Run: `streamlit run app/ui/app.py`
 
 ## Architecture Principle
 
